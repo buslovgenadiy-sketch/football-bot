@@ -4,14 +4,13 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 TOKEN = "8569854292:AAGxfgw4NnycuLPFgDFzZbb5KxnrmrbsdK0"
-
-USER_ID = 2065128167
 CHANNEL_ID = -1003786719812
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
 posted = set()
+user_id = None
 
 RSS = [
     "https://www.goal.com/feeds/en/news",
@@ -20,22 +19,36 @@ RSS = [
 
 
 def get_news():
-    arr = []
+    news = []
 
     for url in RSS:
         feed = feedparser.parse(url)
 
-        for e in feed.entries[:5]:
-            if e.link not in posted:
-                arr.append({
-                    "title": e.title,
-                    "link": e.link
+        for item in feed.entries[:5]:
+            if item.link not in posted:
+                news.append({
+                    "title": item.title,
+                    "link": item.link
                 })
 
-    return arr[:5]
+    return news[:5]
+
+
+@dp.message()
+async def start_handler(message: types.Message):
+    global user_id
+
+    if message.text == "/start":
+        user_id = message.from_user.id
+        await message.answer("✅ Бот активований. Новини будуть надходити сюди.")
 
 
 async def send_news():
+    global user_id
+
+    if not user_id:
+        return
+
     news = get_news()
 
     for item in news:
@@ -56,11 +69,11 @@ async def send_news():
 
         text = f"⚽ {item['title']}\n\n🔗 {item['link']}"
 
-        await bot.send_message(USER_ID, text, reply_markup=kb)
+        await bot.send_message(user_id, text, reply_markup=kb)
 
 
 @dp.callback_query()
-async def callback(call: types.CallbackQuery):
+async def callback_handler(call: types.CallbackQuery):
     data = call.data
 
     if data.startswith("post|"):
