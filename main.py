@@ -34,14 +34,17 @@ def get_news():
             href = link["href"]
             title = link.get_text(" ", strip=True)
 
-            # Берём только реальные новости с датой в ссылке
-            if not re.search(r"/news/football/\d{4}-\d{2}-\d{2}", href):
+            # Только реальные футбольные новости Чемпионата
+            if not href.startswith("/football/news-"):
+                continue
+
+            if ".html" not in href:
                 continue
 
             if len(title) < 25:
                 continue
 
-            full_link = "https://www.championat.com" + href if href.startswith("/") else href
+            full_link = "https://www.championat.com" + href
 
             if full_link in posted:
                 continue
@@ -64,8 +67,6 @@ def get_news():
     except Exception as e:
         print("Ошибка get_news:", e)
         return []
-
-
 def get_news_text(url):
     try:
         response = requests.get(url, headers=HEADERS, timeout=10)
