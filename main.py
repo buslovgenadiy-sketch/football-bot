@@ -14,9 +14,12 @@ user_id = None
 posted = set()
 pending_news = {}
 
+is_running = True  # 🔥 управление ботом
+
 HEADERS = {
     "User-Agent": "Mozilla/5.0"
 }
+
 
 def get_news():
     url = "https://www.championat.com/news/football/1.html"
@@ -26,16 +29,13 @@ def get_news():
         response = requests.get(url, headers=HEADERS, timeout=10)
         soup = BeautifulSoup(response.text, "html.parser")
 
-        # ВАЖНО: берём ссылки в том порядке, как они идут на странице
         for link in soup.select("a[href]"):
-
             href = link.get("href")
             title = link.get_text(" ", strip=True)
 
             if not href or not title:
                 continue
 
-            # только реальные новости
             if not href.startswith("/football/news-"):
                 continue
 
@@ -55,14 +55,12 @@ def get_news():
                 "link": full_link
             })
 
-            # 🔥 ключевой момент — берём только первые 5 свежих
             if len(result) >= 5:
                 break
 
         return result
 
-    except Exception as e:
-        print("Ошибка get_news:", e)
+    except:
         return []
 
 
@@ -82,46 +80,23 @@ def get_news_text(url):
                 break
 
         if start_index is None:
-            return "Текст новини поки не вдалося отримати."
-
-        bad_words = [
-            "Поделиться",
-            "Комментарии",
-            "Материалы по теме",
-            "Теги",
-            "Источник",
-            "Сообщить об ошибке",
-            "Заглавное фото",
-            "Новости. Футбол",
-            "Реклама",
-            "Правовая информация",
-            "Политика конфиденциальности",
-            "На информационном ресурсе",
-            "©"
-        ]
+            return "Текст не знайдено."
 
         good_lines = []
 
         for line in lines[start_index:]:
-            if any(bad.lower() in line.lower() for bad in bad_words):
-                break
-
             if len(line) < 40:
                 continue
 
             good_lines.append(line)
 
-            if len(good_lines) >= 4:
+            if len(good_lines) >= 3:
                 break
 
-        if good_lines:
-            return "\n\n".join(good_lines)
+        return "\n\n".join(good_lines)
 
-        return "Текст новини поки не вдалося отримати."
-
-    except Exception as e:
-        print("Ошибка get_news_text:", e)
-        return "Текст новини поки не вдалося отримати."
+    except:
+        return "Текст не знайдено."
 
 
 def get_news_image(url):
@@ -132,33 +107,36 @@ def get_news_image(url):
         og_image = soup.find("meta", attrs={"property": "og:image"})
 
         if og_image:
-            image_url = og_image.get("content", "").strip()
-
-            if image_url.startswith("http"):
-                return image_url
+            return og_image.get("content")
 
         return None
 
-    except Exception as e:
-        print("Ошибка get_news_image:", e)
+    except:
         return None
 
 
-def make_post(title, article_text):
+def make_post(title, text):
     return f"""🚨 {title}
 
-⚽ {article_text}
+⚽ {text}
 """
 
 
 @dp.message()
-async def start_handler(message: types.Message):
-    global user_id
+async def handler(message: types.Message):
+    global user_id, is_running
 
     if message.text == "/start":
         user_id = message.from_user.id
-        await message.answer("✅ Бот активований. Шукаю футбольні новини...")
-        await send_news()
+        await message.answer("✅ Бот активований")
+
+    elif message.text == "/on":
+        is_running = True
+        await message.answer("🟢 Бот увімкнено")
+
+    elif message.text == "/off":
+        is_running = False
+        await message.answer("🔴 Бот вимкнено")
 
 
 async def send_news():
@@ -169,17 +147,14 @@ async def send_news():
 
     news = get_news()
 
-    if not news:
-        await bot.send_message(user_id, "Поки не знайшов нових футбольних новин.")
-        return
-
     for i, item in enumerate(news):
         news_id = str(i)
         pending_news[news_id] = item
 
-        article_text = get_news_text(item["link"])
+        text_data = get_news_text(item["link"])
         image = get_news_image(item["link"])
-        text = make_post(item["title"], article_text)
+
+        text = make_post(item["title"], text_data)
 
         kb = InlineKeyboardMarkup(
             inline_keyboard=[
@@ -213,8 +188,8 @@ async def send_news():
 
             posted.add(item["link"])
 
-        except Exception as e:
-            print("Ошибка отправки:", e)
+        except:
+            pass
 
 
 @dp.callback_query()
@@ -227,9 +202,10 @@ async def callback_handler(call: types.CallbackQuery):
         if news_id in pending_news:
             item = pending_news[news_id]
 
-            article_text = get_news_text(item["link"])
+            text_data = get_news_text(item["link"])
             image = get_news_image(item["link"])
-            text = make_post(item["title"], article_text)
+
+            text = make_post(item["title"], text_data)
 
             if image:
                 await bot.send_photo(
@@ -238,29 +214,20 @@ async def callback_handler(call: types.CallbackQuery):
                     caption=text[:1024]
                 )
             else:
-                await bot.send_message(
-                    CHANNEL_ID,
-                    text
-                )
+                await bot.send_message(CHANNEL_ID, text)
 
-            if call.message.caption:
-                await call.message.edit_caption("✅ Опубліковано")
-            else:
-                await call.message.edit_text("✅ Опубліковано")
+            await call.message.edit_caption("✅ Опубліковано") if call.message.caption else await call.message.edit_text("✅ Опубліковано")
 
     elif data.startswith("skip_"):
-        if call.message.caption:
-            await call.message.edit_caption("❌ Пропущено")
-        else:
-            await call.message.edit_text("❌ Пропущено")
+        await call.message.edit_caption("❌ Пропущено") if call.message.caption else await call.message.edit_text("❌ Пропущено")
 
 
 async def scheduler():
+    global is_running
+
     while True:
-        try:
+        if is_running:
             await send_news()
-        except Exception as e:
-            print("Ошибка scheduler:", e)
 
         await asyncio.sleep(600)
 
@@ -272,4 +239,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-        
+                                        
