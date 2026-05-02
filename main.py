@@ -1,5 +1,6 @@
 import asyncio
-import feedparser
+import requests
+from bs4 import BeautifulSoup
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
@@ -13,26 +14,58 @@ user_id = None
 posted = set()
 pending_news = {}
 
-RSS = [
-    "https://www.goal.com/feeds/en/news",
-    "https://www.espn.com/espn/rss/soccer/news"
-]
-
 
 def get_news():
     result = []
 
-    for url in RSS:
-        feed = feedparser.parse(url)
+    url = "https://www.championat.com/news/football/1.html"
 
-        for item in feed.entries[:5]:
-            if item.link not in posted:
+    headers = {
+        "User-Agent": "Mozilla/5.0"
+    }
+
+    try:
+        response = requests.get(url, headers=headers, timeout=10)
+        soup = BeautifulSoup(response.text, "html.parser")
+
+        links = soup.find_all("a")
+
+        for link in links:
+            title = link.get_text(strip=True)
+            href = link.get("href")
+
+            if not title:
+                continue
+
+            if len(title) < 25:
+                continue
+
+            if not href:
+                continue
+
+            if "/news/" not in href:
+                continue
+
+            full_link = "https://www.championat.com" + href if href.startswith("/") else href
+
+            if full_link not in posted:
                 result.append({
-                    "title": item.title,
-                    "link": item.link
+                    "title": title,
+                    "link": full_link
                 })
 
-    return result[:5]
+        unique = []
+        seen = set()
+
+        for item in result:
+            if item["title"] not in seen:
+                unique.append(item)
+                seen.add(item["title"])
+
+        return unique[:5]
+
+    except:
+        return []
 
 
 @dp.message()
@@ -72,17 +105,18 @@ async def send_news():
             ]
         )
 
-        text = f"⚽ {item['title']}\n\n🔗 {item['link']}"
+        text = f"🚨 {item['title']}"
 
         try:
             await bot.send_message(user_id, text, reply_markup=kb)
+            posted.add(item["link"])
         except Exception as e:
             await bot.send_message(user_id, f"Ошибка отправки: {e}")
 
 
 @dp.callback_query()
 async def callback_handler(call: types.CallbackQuery):
-    global pending_news, posted
+    global pending_news
 
     data = call.data
 
@@ -92,11 +126,9 @@ async def callback_handler(call: types.CallbackQuery):
         if news_id in pending_news:
             item = pending_news[news_id]
 
-            text = f"⚽ {item['title']}\n\n🔗 {item['link']}"
+            text = f"🚨 {item['title']}"
 
             await bot.send_message(CHANNEL_ID, text)
-
-            posted.add(item["link"])
 
             await call.message.edit_text("✅ Опубліковано")
 
@@ -112,7 +144,7 @@ async def scheduler():
             if user_id:
                 await bot.send_message(user_id, f"Ошибка scheduler: {e}")
 
-        await asyncio.sleep(1800)   # 30 минут
+        await asyncio.sleep(1800)
 
 
 async def main():
@@ -122,7 +154,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-            
-        
-
         
