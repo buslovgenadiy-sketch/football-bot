@@ -15,7 +15,7 @@ posted = set()
 pending_news = {}
 
 
-# Получаем список футбольных новостей
+# Получаем список новостей футбола
 def get_news():
 
     url = "https://www.championat.com/news/football/1.html"
@@ -64,12 +64,22 @@ def get_news():
         return []
 
 
-# Получаем текст новости
+# Получаем нормальный текст новости
 def get_news_text(url):
 
     headers = {
         "User-Agent": "Mozilla/5.0"
     }
+
+    bad_words = [
+        "рекомендательные технологии",
+        "правилами",
+        "cookies",
+        "подписывайтесь",
+        "реклама",
+        "championat",
+        "©"
+    ]
 
     try:
         response = requests.get(url, headers=headers, timeout=10)
@@ -77,15 +87,30 @@ def get_news_text(url):
 
         paragraphs = soup.find_all("p")
 
-        text_parts = []
+        good_text = []
 
         for p in paragraphs:
-            txt = p.get_text(strip=True)
+            txt = p.get_text(" ", strip=True)
 
-            if len(txt) > 50:
-                text_parts.append(txt)
+            if len(txt) < 80:
+                continue
 
-        return " ".join(text_parts[:2])
+            skip = False
+
+            for word in bad_words:
+                if word.lower() in txt.lower():
+                    skip = True
+                    break
+
+            if skip:
+                continue
+
+            good_text.append(txt)
+
+        if good_text:
+            return " ".join(good_text[:2])
+
+        return "Подробности уточняются."
 
     except:
         return "Подробности уточняются."
@@ -187,8 +212,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-                    
-    
-            
-
-
