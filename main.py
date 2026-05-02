@@ -144,7 +144,7 @@ async def scheduler():
             if user_id:
                 await bot.send_message(user_id, f"Ошибка scheduler: {e}")
 
-        await asyncio.sleep(1800)
+        await asyncio.sleep(60)
 
 
 async def main():
