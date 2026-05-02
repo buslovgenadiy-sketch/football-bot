@@ -67,34 +67,64 @@ def get_news():
     except Exception as e:
         print("Ошибка get_news:", e)
         return []
+
+
 def get_news_text(url):
     try:
         response = requests.get(url, headers=HEADERS, timeout=10)
         soup = BeautifulSoup(response.text, "html.parser")
 
-        meta = soup.find("meta", attrs={"name": "description"})
+        full_text = soup.get_text("\n", strip=True)
+        lines = full_text.split("\n")
 
-        if meta:
-            text = meta.get("content", "").strip()
+        start_index = None
 
-            if len(text) > 40:
-                return text
+        for i, line in enumerate(lines):
+            if "Комментарии" in line:
+                start_index = i + 1
+                break
 
-        og = soup.find("meta", attrs={"property": "og:description"})
+        if start_index is None:
+            return "Текст новини поки не вдалося отримати."
 
-        if og:
-            text = og.get("content", "").strip()
+        bad_words = [
+            "Поделиться",
+            "Комментарии",
+            "Материалы по теме",
+            "Теги",
+            "Источник",
+            "Сообщить об ошибке",
+            "Заглавное фото",
+            "Новости. Футбол",
+            "Реклама",
+            "Правовая информация",
+            "Политика конфиденциальности",
+            "На информационном ресурсе",
+            "©"
+        ]
 
-            if len(text) > 40:
-                return text
+        good_lines = []
+
+        for line in lines[start_index:]:
+            if any(bad.lower() in line.lower() for bad in bad_words):
+                break
+
+            if len(line) < 40:
+                continue
+
+            good_lines.append(line)
+
+            if len(good_lines) >= 4:
+                break
+
+        if good_lines:
+            return "\n\n".join(good_lines)
 
         return "Текст новини поки не вдалося отримати."
 
     except Exception as e:
         print("Ошибка get_news_text:", e)
         return "Текст новини поки не вдалося отримати."
-
-
 @dp.message()
 async def start_handler(message: types.Message):
     global user_id
