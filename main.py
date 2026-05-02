@@ -1,5 +1,4 @@
 import asyncio
-import re
 import requests
 from bs4 import BeautifulSoup
 from aiogram import Bot, Dispatcher, types
@@ -34,7 +33,6 @@ def get_news():
             href = link["href"]
             title = link.get_text(" ", strip=True)
 
-            # Только реальные футбольные новости Чемпионата
             if not href.startswith("/football/news-"):
                 continue
 
@@ -125,6 +123,35 @@ def get_news_text(url):
     except Exception as e:
         print("Ошибка get_news_text:", e)
         return "Текст новини поки не вдалося отримати."
+
+
+def get_news_image(url):
+    try:
+        response = requests.get(url, headers=HEADERS, timeout=10)
+        soup = BeautifulSoup(response.text, "html.parser")
+
+        og_image = soup.find("meta", attrs={"property": "og:image"})
+
+        if og_image:
+            image_url = og_image.get("content", "").strip()
+
+            if image_url.startswith("http"):
+                return image_url
+
+        return None
+
+    except Exception as e:
+        print("Ошибка get_news_image:", e)
+        return None
+
+
+def make_post(title, article_text):
+    return f"""🚨 {title}
+
+⚽ {article_text}
+"""
+
+
 @dp.message()
 async def start_handler(message: types.Message):
     global user_id
@@ -152,11 +179,8 @@ async def send_news():
         pending_news[news_id] = item
 
         article_text = get_news_text(item["link"])
-
-        text = f"""🚨 {item['title']}
-
-⚽ {article_text}
-"""
+        image = get_news_image(item["link"])
+        text = make_post(item["title"], article_text)
 
         kb = InlineKeyboardMarkup(
             inline_keyboard=[
@@ -174,8 +198,22 @@ async def send_news():
         )
 
         try:
-            await bot.send_message(user_id, text, reply_markup=kb)
+            if image:
+                await bot.send_photo(
+                    user_id,
+                    photo=image,
+                    caption=text[:1024],
+                    reply_markup=kb
+                )
+            else:
+                await bot.send_message(
+                    user_id,
+                    text,
+                    reply_markup=kb
+                )
+
             posted.add(item["link"])
+
         except Exception as e:
             print("Ошибка отправки:", e)
 
@@ -189,18 +227,33 @@ async def callback_handler(call: types.CallbackQuery):
 
         if news_id in pending_news:
             item = pending_news[news_id]
+
             article_text = get_news_text(item["link"])
+            image = get_news_image(item["link"])
+            text = make_post(item["title"], article_text)
 
-            text = f"""🚨 {item['title']}
+            if image:
+                await bot.send_photo(
+                    CHANNEL_ID,
+                    photo=image,
+                    caption=text[:1024]
+                )
+            else:
+                await bot.send_message(
+                    CHANNEL_ID,
+                    text
+                )
 
-⚽ {article_text}
-"""
-
-            await bot.send_message(CHANNEL_ID, text)
-            await call.message.edit_text("✅ Опубліковано")
+            if call.message.caption:
+                await call.message.edit_caption("✅ Опубліковано")
+            else:
+                await call.message.edit_text("✅ Опубліковано")
 
     elif data.startswith("skip_"):
-        await call.message.edit_text("❌ Пропущено")
+        if call.message.caption:
+            await call.message.edit_caption("❌ Пропущено")
+        else:
+            await call.message.edit_text("❌ Пропущено")
 
 
 async def scheduler():
@@ -210,7 +263,7 @@ async def scheduler():
         except Exception as e:
             print("Ошибка scheduler:", e)
 
-        await asyncio.sleep(300)
+        await asyncio.sleep(600)
 
 
 async def main():
@@ -220,3 +273,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+        
