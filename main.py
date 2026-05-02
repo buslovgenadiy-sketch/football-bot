@@ -18,7 +18,6 @@ HEADERS = {
     "User-Agent": "Mozilla/5.0"
 }
 
-
 def get_news():
     url = "https://www.championat.com/news/football/1.html"
     result = []
@@ -27,12 +26,16 @@ def get_news():
         response = requests.get(url, headers=HEADERS, timeout=10)
         soup = BeautifulSoup(response.text, "html.parser")
 
-        links = soup.find_all("a", href=True)
+        # ВАЖНО: берём ссылки в том порядке, как они идут на странице
+        for link in soup.select("a[href]"):
 
-        for link in links:
-            href = link["href"]
+            href = link.get("href")
             title = link.get_text(" ", strip=True)
 
+            if not href or not title:
+                continue
+
+            # только реальные новости
             if not href.startswith("/football/news-"):
                 continue
 
@@ -52,15 +55,11 @@ def get_news():
                 "link": full_link
             })
 
-        unique = []
-        seen = set()
+            # 🔥 ключевой момент — берём только первые 5 свежих
+            if len(result) >= 5:
+                break
 
-        for item in result:
-            if item["link"] not in seen:
-                unique.append(item)
-                seen.add(item["link"])
-
-        return unique[:5]
+        return result
 
     except Exception as e:
         print("Ошибка get_news:", e)
