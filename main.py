@@ -15,7 +15,7 @@ posted = set()
 pending_news = {}
 
 
-# Получаем список новостей футбола
+# Получаем список футбольных новостей
 def get_news():
 
     url = "https://www.championat.com/news/football/1.html"
@@ -39,7 +39,7 @@ def get_news():
             if "/news/football/" not in href:
                 continue
 
-            if len(title) < 20:
+            if len(title) < 15:
                 continue
 
             full_link = "https://www.championat.com" + href
@@ -64,56 +64,39 @@ def get_news():
         return []
 
 
-# Получаем нормальный текст новости
+# Получаем краткий текст новости
 def get_news_text(url):
 
     headers = {
         "User-Agent": "Mozilla/5.0"
     }
 
-    bad_words = [
-        "рекомендательные технологии",
-        "правилами",
-        "cookies",
-        "подписывайтесь",
-        "реклама",
-        "championat",
-        "©"
-    ]
-
     try:
         response = requests.get(url, headers=headers, timeout=10)
         soup = BeautifulSoup(response.text, "html.parser")
 
-        paragraphs = soup.find_all("p")
+        # Meta description
+        meta = soup.find("meta", attrs={"name": "description"})
 
-        good_text = []
+        if meta:
+            text = meta.get("content", "").strip()
 
-        for p in paragraphs:
-            txt = p.get_text(" ", strip=True)
+            if len(text) > 30:
+                return text
 
-            if len(txt) < 80:
-                continue
+        # Open Graph description
+        og = soup.find("meta", attrs={"property": "og:description"})
 
-            skip = False
+        if og:
+            text = og.get("content", "").strip()
 
-            for word in bad_words:
-                if word.lower() in txt.lower():
-                    skip = True
-                    break
+            if len(text) > 30:
+                return text
 
-            if skip:
-                continue
-
-            good_text.append(txt)
-
-        if good_text:
-            return " ".join(good_text[:2])
-
-        return "Подробности уточняются."
+        return "Головна новина зі світу футболу просто зараз."
 
     except:
-        return "Подробности уточняются."
+        return "Головна новина зі світу футболу просто зараз."
 
 
 @dp.message()
