@@ -15,8 +15,8 @@ posted = set()
 pending_news = {}
 
 
+# Получаем список футбольных новостей
 def get_news():
-    result = []
 
     url = "https://www.championat.com/news/football/1.html"
 
@@ -24,29 +24,25 @@ def get_news():
         "User-Agent": "Mozilla/5.0"
     }
 
+    result = []
+
     try:
         response = requests.get(url, headers=headers, timeout=10)
         soup = BeautifulSoup(response.text, "html.parser")
 
-        links = soup.find_all("a")
+        links = soup.find_all("a", href=True)
 
         for link in links:
+            href = link["href"]
             title = link.get_text(strip=True)
-            href = link.get("href")
 
-            if not title:
+            if "/news/football/" not in href:
                 continue
 
-            if len(title) < 25:
+            if len(title) < 20:
                 continue
 
-            if not href:
-                continue
-
-            if "/news/" not in href:
-                continue
-
-            full_link = "https://www.championat.com" + href if href.startswith("/") else href
+            full_link = "https://www.championat.com" + href
 
             if full_link not in posted:
                 result.append({
@@ -58,14 +54,41 @@ def get_news():
         seen = set()
 
         for item in result:
-            if item["title"] not in seen:
+            if item["link"] not in seen:
                 unique.append(item)
-                seen.add(item["title"])
+                seen.add(item["link"])
 
         return unique[:5]
 
     except:
         return []
+
+
+# Получаем текст новости
+def get_news_text(url):
+
+    headers = {
+        "User-Agent": "Mozilla/5.0"
+    }
+
+    try:
+        response = requests.get(url, headers=headers, timeout=10)
+        soup = BeautifulSoup(response.text, "html.parser")
+
+        paragraphs = soup.find_all("p")
+
+        text_parts = []
+
+        for p in paragraphs:
+            txt = p.get_text(strip=True)
+
+            if len(txt) > 50:
+                text_parts.append(txt)
+
+        return " ".join(text_parts[:2])
+
+    except:
+        return "Подробности уточняются."
 
 
 @dp.message()
@@ -74,7 +97,8 @@ async def start_handler(message: types.Message):
 
     if message.text == "/start":
         user_id = message.from_user.id
-        await message.answer("✅ Бот активований. Новини будуть приходити сюди.")
+        await message.answer("✅ Бот активований.")
+        await send_news()
 
 
 async def send_news():
@@ -86,9 +110,16 @@ async def send_news():
     news = get_news()
 
     for i, item in enumerate(news):
-        news_id = str(i)
 
+        news_id = str(i)
         pending_news[news_id] = item
+
+        article_text = get_news_text(item["link"])
+
+        text = f"""🚨 {item['title']}
+
+⚽ {article_text}
+"""
 
         kb = InlineKeyboardMarkup(
             inline_keyboard=[
@@ -105,13 +136,11 @@ async def send_news():
             ]
         )
 
-        text = f"🚨 {item['title']}"
-
         try:
             await bot.send_message(user_id, text, reply_markup=kb)
             posted.add(item["link"])
-        except Exception as e:
-            await bot.send_message(user_id, f"Ошибка отправки: {e}")
+        except:
+            pass
 
 
 @dp.callback_query()
@@ -121,15 +150,20 @@ async def callback_handler(call: types.CallbackQuery):
     data = call.data
 
     if data.startswith("post_"):
+
         news_id = data.replace("post_", "")
 
         if news_id in pending_news:
-            item = pending_news[news_id]
 
-            text = f"🚨 {item['title']}"
+            item = pending_news[news_id]
+            article_text = get_news_text(item["link"])
+
+            text = f"""🚨 {item['title']}
+
+⚽ {article_text}
+"""
 
             await bot.send_message(CHANNEL_ID, text)
-
             await call.message.edit_text("✅ Опубліковано")
 
     elif data.startswith("skip_"):
@@ -140,11 +174,10 @@ async def scheduler():
     while True:
         try:
             await send_news()
-        except Exception as e:
-            if user_id:
-                await bot.send_message(user_id, f"Ошибка scheduler: {e}")
+        except:
+            pass
 
-        await asyncio.sleep(60)
+        await asyncio.sleep(300)
 
 
 async def main():
@@ -154,4 +187,8 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-        
+                    
+    
+            
+
+
